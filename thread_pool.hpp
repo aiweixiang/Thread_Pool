@@ -11,16 +11,30 @@
  * 使用禁忌
  * - 任务内不递归 submit() 回同一线程池；需要时使用 try_submit()。
  * - 任务内不调用本线程池的 shutdown()、wait() 或析构函数。
+ * - 任务不得同步等待同一线程池中尚未完成的其他任务；任务依赖应在池外调度。
+ * - submit()/try_submit() 会在互斥锁保护下构造任务；可调用对象和入参的
+ *   拷贝/移动构造函数不得回调本线程池的任何成员函数。
+ * - 销毁线程池前必须 join 所有可能调用 submit()/try_submit()/wait()/
+ *   shutdown() 的外部线程；shutdown() 返回不表示其他线程的调用已经返回。
+ * - std::ref 不延长被引用对象的生命周期；该对象必须存活到任务执行结束。
  *
  * 已知语义
  * - try_submit() 只有在确认队列未满且线程池未关闭后才构造任务，因此失败返回
  *   std::nullopt 时不会消费入参。
+ * - try_submit() 返回 std::nullopt 可能表示队列已满或线程池已关闭；可调用
+ *   isShutdown() 区分，但并发状态下仍需处理关闭竞态。
+ * - submit() 在线程池已关闭时抛 std::runtime_error；用户参数或可调用对象的
+ *   构造也可能抛出 std::runtime_error。捕获后可用 isShutdown() 辅助判断，
+ *   但不能仅凭异常类型区分所有情况。
  * - shutdown(Discard) 后，被丢弃任务的 future 会以 std::future_error
  *   (broken_promise) 结束。
  * - 并发 shutdown() 参数不同时，只有第一个把 stop_ 从 false 切换为 true
  *   的调用者的模式生效；所有调用者都在 worker join 完成后才返回。
+ * - isShutdown() 返回 true 只表示关闭已经开始，不表示正在执行的任务已结束、
+ *   worker 已 join 或资源已完全释放。
  * - wait() 只等待调用时刻之前已经成功提交的任务清空且不再执行，不保证之后
  *   不再提交任务；与 shutdown() 并发时，Discard 丢弃的任务也会被计入完成。
+ * - 放弃或只等待 future 而不调用 get() 会失去任务异常；wait() 只报告就绪。
  * - threadCount() 返回构造时创建的 worker 槽位数（threadCount == 0 时按 1）；
  *   shutdown join 之后数值不变，不表示仍有活线程。
  */
@@ -71,6 +85,15 @@ private:
             : func_(std::forward<F>(func)),
               args_(std::forward<A>(args)...),
               task_([this]() -> Result { return invokeTask(); }) {}
+
+        // task_ captures this. Copying or moving the object would leave the
+        // packaged_task's shared state bound to the old address. Before making
+        // this type movable, replace task_ with a std::promise<Result> member;
+        // do not try to repair a move constructor around packaged_task.
+        PackagedTask(const PackagedTask&) = delete;
+        PackagedTask& operator=(const PackagedTask&) = delete;
+        PackagedTask(PackagedTask&&) = delete;
+        PackagedTask& operator=(PackagedTask&&) = delete;
 
         void run() override {
             task_();
@@ -259,6 +282,9 @@ private:
     template <typename Func, typename... Args>
     NewTask<InvokeResult<Func, Args...>> makeTask(
         std::uint64_t id, Func&& func, Args&&... args) {
+        // submit() and try_submit() currently construct the task while holding
+        // mutex_. Before moving construction outside the critical section,
+        // preserve bounded-queue failure semantics and quantify the change.
         using TaskType =
             PackagedTask<std::decay_t<Func>, std::decay_t<Args>...>;
 

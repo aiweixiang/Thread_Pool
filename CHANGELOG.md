@@ -1,6 +1,6 @@
 # Changelog
 
-## 未发布
+## v0.1.1 - 2026-09-13
 
 ### 变更
 - 完成位图改为 `deque<uint8_t>`。
@@ -9,6 +9,11 @@
 - CMake 增加 install / export。
 - 测试去掉固定 sleep 同步。
 - 头文件补充 `threadCount()` 语义。
+- 禁止内部 `PackagedTask` 复制/移动，并记录 `std::promise` 可移动化方向，
+  避免后续内联任务存储触发自引用 use-after-free。
+- 补充同池 future 依赖死锁、`isShutdown()`、持锁任务构造、析构并发前提、
+  `std::ref` 生命周期和 future 异常观测等使用边界。
+- 统一规则与雷点文档标题，移除标题中已经失去含义的“本轮”措辞。
 
 ## v0.1.0 - 2026-09-13
 

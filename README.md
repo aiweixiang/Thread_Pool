@@ -38,6 +38,22 @@ C++17 header-only 线程池，`#include "thread_pool.hpp"` 即可使用。
     pool.shutdown(mylib::ShutdownMode::Drain);    // 等排队任务跑完（析构默认）
     pool.shutdown(mylib::ShutdownMode::Discard);  // 丢弃排队任务
 
+## 使用边界
+
+- 任务不得同步等待同一线程池中尚未完成的其他任务。单 worker 池中，
+  “先提交的任务等待后提交任务”会在 worker 被占满后死锁；任务依赖应在池外调度。
+- `submit()` / `try_submit()` 在互斥锁保护下构造任务。可调用对象和入参的
+  拷贝/移动构造函数不得回调本线程池，否则可能自死锁。
+- `shutdown()` 返回不表示其他线程正在进行的 `submit()` / `try_submit()` /
+  `wait()` / `shutdown()` 调用已经返回。销毁线程池前必须先 join 这些外部线程。
+- `isShutdown()` 只表示关闭已经开始，不表示正在执行的任务已结束或 worker 已 join。
+- `std::ref` 不延长对象生命周期。被引用对象必须存活到任务执行结束。
+- 不在 future 上调用 `get()` 时，任务异常无法被观测；仅调用 `wait()` 不会重抛异常。
+
+已关闭池上的 `submit()` 抛 `std::runtime_error`；用户参数或可调用对象的构造也可能
+抛同类型的异常。需要辅助判断时可检查 `isShutdown()`。`try_submit()` 返回
+`std::nullopt` 可能表示队列已满或池已关闭，同样可用 `isShutdown()` 区分。
+
 ## 构建 / 测试
 
     cmake -S . -B build && cmake --build build
