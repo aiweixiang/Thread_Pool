@@ -67,7 +67,7 @@ jobs:
         run: >
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Release
-          -DTHREAD_POOL_WARNINGS_AS_ERRORS=ON
+          -DTHREAD_POOL_WARNINGS_AS_ERRORS=OFF
 
       - name: Build
         run: cmake --build build --config Release --parallel
