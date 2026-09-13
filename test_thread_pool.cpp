@@ -338,6 +338,47 @@ void testShutdownFirstModeWinsAndBoolCompatibility() {
           "shutdown(true) should retain Drain compatibility semantics");
 }
 
+void testWaitWaitsOnlyForTasksSubmittedBeforeItStarted() {
+    mylib::ThreadPool pool(2);
+    std::promise<void> slowStarted;
+    std::promise<void> releaseSlow;
+    std::future<void> slowStartedFuture = slowStarted.get_future();
+    std::future<void> releaseSlowFuture = releaseSlow.get_future();
+
+    auto slowFuture = pool.submit([&slowStarted, &releaseSlowFuture] {
+        slowStarted.set_value();
+        releaseSlowFuture.wait();
+    });
+    slowStartedFuture.wait();
+
+    std::atomic<bool> waiterStarted{false};
+    std::atomic<bool> waitReturned{false};
+    std::thread waiter([&pool, &waiterStarted, &waitReturned] {
+        waiterStarted.store(true, std::memory_order_release);
+        pool.wait();
+        waitReturned.store(true, std::memory_order_release);
+    });
+    while (!waiterStarted.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    auto laterFuture = pool.submit([] {});
+    laterFuture.get();
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    check(!waitReturned.load(std::memory_order_acquire),
+          "wait must not be satisfied by tasks submitted after it started");
+
+    releaseSlow.set_value();
+    slowFuture.get();
+    waiter.join();
+    check(waitReturned.load(std::memory_order_acquire),
+          "wait should return after all tasks submitted before it started finish");
+
+    pool.shutdown();
+}
+
 void testDestructorDrainsByDefault() {
     std::future<int> future;
     {
@@ -433,6 +474,7 @@ int main() {
     testBoundedSubmitDiscardAndBrokenPromise();
     testTrySubmitFailureDoesNotConsumeArguments();
     testShutdownFirstModeWinsAndBoolCompatibility();
+    testWaitWaitsOnlyForTasksSubmittedBeforeItStarted();
     testDestructorDrainsByDefault();
     testZeroThreadsAndObservability();
     testConcurrentShutdownAndSubmit();

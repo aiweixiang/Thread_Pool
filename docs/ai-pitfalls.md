@@ -13,6 +13,8 @@
   swap 到锁外局部变量，锁释放后再让其析构。
 - R4 notify 放在解锁之后，不要在持锁时 notify_all。
 - R5 submit / try_submit 加 [[nodiscard]]。
+- R6 worker 任务可用和 wait() 完成等待使用独立 condition variable，
+  避免 notify_one() 唤醒错误等待者。
 
 ## 历史雷（不要退化）
 

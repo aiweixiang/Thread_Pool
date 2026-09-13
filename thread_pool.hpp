@@ -25,6 +25,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <future>
@@ -54,6 +55,8 @@ private:
     struct TaskBase {
         virtual ~TaskBase() = default;
         virtual void run() = 0;
+
+        std::uint64_t id = 0;
     };
 
     template <typename Func, typename... Args>
@@ -149,10 +152,12 @@ public:
             throw std::runtime_error("submit on a shutdown ThreadPool");
         }
 
+        const std::uint64_t taskId = totalSubmitted_ + 1;
+        prepareCompletionFlagLocked(taskId);
         NewTask<InvokeResult<Func, Args...>> newTask =
-            makeTask(std::forward<Func>(func), std::forward<Args>(args)...);
+            makeTask(taskId, std::forward<Func>(func), std::forward<Args>(args)...);
         tasks_.push_back(std::move(newTask.task));
-        ++totalSubmitted_;
+        totalSubmitted_ = taskId;
         std::future<InvokeResult<Func, Args...>> future =
             std::move(newTask.future);
 
@@ -169,10 +174,12 @@ public:
             return std::nullopt;
         }
 
+        const std::uint64_t taskId = totalSubmitted_ + 1;
+        prepareCompletionFlagLocked(taskId);
         NewTask<InvokeResult<Func, Args...>> newTask =
-            makeTask(std::forward<Func>(func), std::forward<Args>(args)...);
+            makeTask(taskId, std::forward<Func>(func), std::forward<Args>(args)...);
         tasks_.push_back(std::move(newTask.task));
-        ++totalSubmitted_;
+        totalSubmitted_ = taskId;
         std::future<InvokeResult<Func, Args...>> future =
             std::move(newTask.future);
 
@@ -190,8 +197,10 @@ public:
             if (!stop_) {
                 stop_ = true;
                 if (mode == ShutdownMode::Discard) {
+                    for (const auto& task : tasks_) {
+                        markTaskCompletedLocked(task->id);
+                    }
                     discardedTasks.swap(tasks_);
-                    completedTasks_ += discardedTasks.size();
                 }
             }
         }
@@ -201,6 +210,7 @@ public:
 
         // Notify only after the lock has been released.
         cvTasks_.notify_all();
+        cvWait_.notify_all();
         cvNotFull_.notify_all();
 
         std::call_once(shutdownOnce_, [this] {
@@ -218,9 +228,9 @@ public:
 
     void wait() {
         std::unique_lock<std::mutex> lock(mutex_);
-        const std::size_t target = totalSubmitted_;
-        cvTasks_.wait(lock, [this, target] {
-            return completedTasks_ >= target;
+        const std::uint64_t target = totalSubmitted_;
+        cvWait_.wait(lock, [this, target] {
+            return nextCompletionId_ > target;
         });
     }
 
@@ -246,19 +256,49 @@ public:
 private:
     template <typename Func, typename... Args>
     NewTask<InvokeResult<Func, Args...>> makeTask(
-        Func&& func, Args&&... args) {
+        std::uint64_t id, Func&& func, Args&&... args) {
         using TaskType =
             PackagedTask<std::decay_t<Func>, std::decay_t<Args>...>;
 
         std::unique_ptr<TaskType> task = std::make_unique<TaskType>(
             std::forward<Func>(func), std::forward<Args>(args)...);
+        task->id = id;
         std::future<InvokeResult<Func, Args...>> future = task->getFuture();
         return {std::move(task), std::move(future)};
+    }
+
+    void prepareCompletionFlagLocked(std::uint64_t id) {
+        if (id < nextCompletionId_) {
+            return;
+        }
+
+        const auto offset = static_cast<std::size_t>(id - nextCompletionId_);
+        if (offset >= completionFlags_.size()) {
+            completionFlags_.resize(offset + 1, false);
+        }
+    }
+
+    void markTaskCompletedLocked(std::uint64_t id) noexcept {
+        if (id < nextCompletionId_) {
+            return;
+        }
+
+        const auto offset = static_cast<std::size_t>(id - nextCompletionId_);
+        if (offset >= completionFlags_.size()) {
+            return;
+        }
+
+        completionFlags_[offset] = true;
+        while (!completionFlags_.empty() && completionFlags_.front()) {
+            completionFlags_.pop_front();
+            ++nextCompletionId_;
+        }
     }
 
     void workerLoop() noexcept {
         for (;;) {
             std::unique_ptr<TaskBase> task;
+            std::uint64_t taskId = 0;
 
             {
                 std::unique_lock<std::mutex> lock(mutex_);
@@ -272,6 +312,7 @@ private:
 
                 task = std::move(tasks_.front());
                 tasks_.pop_front();
+                taskId = task->id;
                 ++activeTasks_;
             }
 
@@ -289,21 +330,25 @@ private:
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 --activeTasks_;
-                ++completedTasks_;
+                markTaskCompletedLocked(taskId);
             }
-            cvTasks_.notify_all();
+            cvWait_.notify_all();
         }
     }
 
     mutable std::mutex mutex_;
+    // Keep task availability and wait() completion separate so submit()'s
+    // notify_one() cannot wake a wait() caller instead of an idle worker.
     std::condition_variable cvTasks_;
+    std::condition_variable cvWait_;
     std::condition_variable cvNotFull_;
     std::deque<std::unique_ptr<TaskBase>> tasks_;
     std::vector<std::thread> workers_;
     std::once_flag shutdownOnce_;
     std::size_t maxQueueSize_ = 0;
-    std::size_t totalSubmitted_ = 0;
-    std::size_t completedTasks_ = 0;
+    std::uint64_t totalSubmitted_ = 0;
+    std::uint64_t nextCompletionId_ = 1;
+    std::deque<bool> completionFlags_;
     std::size_t activeTasks_ = 0;
     bool stop_ = false;
 };

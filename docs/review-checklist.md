@@ -16,6 +16,7 @@
 - [ ] R3：shutdown(Discard) 被丢弃任务在锁外析构。
 - [ ] R4：所有 notify 在解锁之后。
 - [ ] R5：submit / try_submit 有 [[nodiscard]]。
+- [ ] R6：worker 与 wait() 使用独立 condition variable。
 
 ## 历史雷（不退化）
 - [ ] 调用处无无意义的 std::move(func)。

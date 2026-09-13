@@ -1,6 +1,6 @@
 # Changelog
 
-## 未发布
+## v0.1.0 - 2026-09-13
 
 ### 新增
 - 完成 C++17 header-only `mylib::ThreadPool` 核心实现。
@@ -14,6 +14,10 @@
 - CMake 增加 TSan、ASan、UBSan 开关。
 
 ### 修复
+- 修复 `wait()` 可能被后续提交且先完成的任务提前满足的问题。
+- 拆分任务可用与完成等待的条件变量，避免 `submit()` 的 worker 通知被
+  `wait()` 调用者误消费。
+- docs/pitfalls.md 同步更新。
 - R1：`submit`、`try_submit`、`makeTask` 统一使用
   `std::invoke_result_t<Func&, Args...>` 推导返回类型。
 - R2：`try_submit` 先检查关闭状态和队列容量，失败时不消费入参。

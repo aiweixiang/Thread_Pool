@@ -17,7 +17,9 @@ C++17 header-only 线程池，`#include "thread_pool.hpp"` 即可使用。
     test_thread_pool.cpp    单元测试
     CMakeLists.txt          构建脚本
     CHANGELOG.md            版本历史
+    LICENSE                 MIT License
     docs/                   开发文档（需求 / 规则 / 雷点 / 自检清单）
+    .github/workflows/       GitHub Actions CI
 
 ## 快速上手
 
@@ -45,3 +47,7 @@ Sanitizer：
 
     cmake -S . -B build-tsan -DTHREAD_POOL_ENABLE_TSAN=ON
     cmake --build build-tsan && ctest --test-dir build-tsan
+
+## License
+
+本项目采用 [MIT License](LICENSE)。

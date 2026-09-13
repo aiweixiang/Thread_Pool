@@ -15,7 +15,7 @@ operator()& 和 operator()&& 且返回类型不同时，推导类型与实际调
 
 规则：一律用 std::invoke_result_t<Func&, Args...>，三处一致。
 
-状态：待修复。
+状态：已修复。
 
 ---
 
@@ -29,7 +29,7 @@ operator()& 和 operator()&& 且返回类型不同时，推导类型与实际调
 规则：二选一：先加锁检查再构造 task；或保留现顺序但在头文件注释声明
 「失败时入参可能已被移动」。
 
-状态：待定。
+状态：已修复。
 
 ---
 
@@ -42,7 +42,7 @@ operator()& 和 operator()&& 且返回类型不同时，推导类型与实际调
 
 规则：swap 到锁外局部变量，锁释放后再析构。
 
-状态：待修复。
+状态：已修复。
 
 ---
 
@@ -54,7 +54,7 @@ operator()& 和 operator()&& 且返回类型不同时，推导类型与实际调
 
 规则：先改状态、解锁，再 notify。
 
-状态：待优化。
+状态：已修复。
 
 ---
 
@@ -65,7 +65,7 @@ try_submit 的 optional 会吞掉失败。
 
 规则：两者都加 [[nodiscard]]。
 
-状态：待添加。
+状态：已修复。
 
 ---
 
@@ -98,7 +98,7 @@ join 用 std::call_once，所有调用者等到 join 完成才返回。
 
 ## P9 shutdown(Discard) 后 future 抛 broken_promise（历史）
 
-被丢弃任务的 packaged_task 随 shared_ptr 析构，未调用即销毁。
+被丢弃任务的 packaged_task 随 unique_ptr 析构，未调用即销毁。
 
 状态：文档已覆盖，须保留。
 
@@ -119,3 +119,17 @@ std::bad_function_call 等会杀死工作线程。规则：task() 外包
 try/catch(...) 兜底。
 
 状态：已修复，回归测试须保留。
+
+---
+
+## P12 wait() 与 worker 共用任务条件变量（本轮新雷）
+
+现象：存在 `wait()` 等待者时，`submit()` 的 `notify_one()` 可能唤醒等待
+完成状态的调用者，而不是空闲 worker；队列中有任务但无人执行。
+
+根因：一个 condition variable 被用于两个不同的等待谓词。
+
+规则：worker 等待任务使用 `cvTasks_`，`wait()` 使用独立的 `cvWait_`；
+通知必须发送到对应条件变量。
+
+状态：已修复。
