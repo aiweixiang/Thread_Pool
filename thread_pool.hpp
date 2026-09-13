@@ -125,7 +125,8 @@ private:
 
 public:
     explicit ThreadPool(
-        std::size_t threadCount = std::thread::hardware_concurrency(),
+        std::size_t threadCount = static_cast<std::size_t>(
+            std::thread::hardware_concurrency()),
         std::size_t maxQueueSize = 0)
         : maxQueueSize_(maxQueueSize) {
         if (threadCount == 0) {
