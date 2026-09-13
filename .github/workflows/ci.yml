@@ -7,16 +7,24 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DTHREAD_POOL_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build --parallel
@@ -24,15 +32,63 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-  tsan:
+  clang:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CC: clang
+      CXX: clang++
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DTHREAD_POOL_ENABLE_TSAN=ON
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DTHREAD_POOL_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DTHREAD_POOL_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  tsan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DTHREAD_POOL_ENABLE_TSAN=ON
+          -DTHREAD_POOL_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build --parallel
@@ -42,16 +98,55 @@ jobs:
 
   asan:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DTHREAD_POOL_ENABLE_ASAN=ON -DTHREAD_POOL_ENABLE_UBSAN=ON
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DTHREAD_POOL_ENABLE_ASAN=ON
+          -DTHREAD_POOL_ENABLE_UBSAN=ON
+          -DTHREAD_POOL_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build --parallel
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Configure library
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DTHREAD_POOL_BUILD_TESTS=OFF
+          -DTHREAD_POOL_BUILD_DEMO=OFF
+
+      - name: Build library
+        run: cmake --build build --parallel
+
+      - name: Install library
+        run: cmake --install build --prefix "${RUNNER_TEMP}/threadpool-install"
+
+      - name: Configure consumer
+        run: >
+          cmake -S tests/consumer -B consumer-build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_PREFIX_PATH="${RUNNER_TEMP}/threadpool-install"
+
+      - name: Build consumer
+        run: cmake --build consumer-build --parallel
+
+      - name: Run consumer
+        run: ./consumer-build/thread_pool_consumer

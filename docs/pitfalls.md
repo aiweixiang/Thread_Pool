@@ -72,82 +72,86 @@
 
 ### P24 默认无界队列缺少背压
 
-**状态：Open（文档优先，默认值不改）**
+**状态：Guarded（文档已覆盖，默认值不改）**
 
 - 默认 `maxQueueSize == 0` 表示无界；生产速度长期高于消费速度时可能持续增长直至 OOM。
-- 建议：README 明确内存风险，生产环境优先使用有界队列；不破坏现有默认行为。
+- README 已明确内存风险，生产环境应优先使用有界队列；不破坏现有默认行为。
 
-### P25 任务构造异常缺少契约与回归保险
+### P25 任务构造异常契约与回归保险
 
-**状态：Open（测试增强）**
+**状态：Fixed**
 
 - 用户复制/移动构造、分配或容器操作可能在任务入队前抛异常。
-- 期望不变量：任务未被接受、`totalSubmitted_` 不推进、锁正常释放、池仍可继续使用。
-- 需要测试：构造抛出 `runtime_error` 后，立即提交正常任务并验证可以完成。
-- 文档：`try_submit()` 返回 `nullopt` 只代表队列满/池关闭，不代表构造绝不抛异常。
+- `test_thread_pool_robustness.cpp` 覆盖 copy/move/`bad_alloc`、队列容量和重复失败。
+- 不变量已验证：任务未被接受、`totalSubmitted_` 不推进、锁正常释放、池继续可用。
+- `try_submit()` 构造异常仍向外传播；`nullopt` 只代表队列满或池关闭。
 
-### P26 并发 API 组合覆盖不足
+### P26 并发 API 组合覆盖
 
-**状态：Open（测试增强）**
+**状态：Fixed**
 
-- 当前重点覆盖 `submit()` × `shutdown()`，`try_submit()`、`wait()` 与多提交者的组合不足。
-- 需要补充接受任务数、`fulfilled + broken_promise` 总数和带超时就绪检查。
-- 与 P28、P32 同批处理，避免只验证“不崩溃”而漏掉任务丢失。
+- 并发测试现在混合使用 `submit()`、`try_submit()`、`wait()` 和 shutdown。
+- 测试等待真实积压后才关闭，覆盖 bounded/unbounded 与 Drain/Discard。
+- 每个 accepted future 都检查 ready，并核对完成、broken 和执行数账目。
 
 ### P27 shutdown 和析构可能无限等待
 
-**状态：Open（文档边界，不增加取消机制）**
+**状态：Guarded（文档已覆盖，不增加取消机制）**
 
 - `Drain` 和析构等待所有任务结束；`Discard` 也不中断活动任务。
 - 活动任务永久阻塞时，shutdown 和析构会永久阻塞。
-- 当前规则：README 必须明确任务必须能自行结束；超时、强杀和取消属于新设计。
+- README 已明确任务必须能自行结束；超时、强杀和取消属于新设计。
 
 ### P28 wait 快照测试存在调度盲区
 
-**状态：Open（测试增强）**
+**状态：Fixed**
 
-- 现有测试不能严格证明 waiter 已进入 `wait()` 后再提交 later 任务。
-- 目标：增加测试专用观测机制或确定性 hook，不改变公开 API 和快照语义。
+- `THREAD_POOL_TEST_ON_WAIT_ENTERED` 是编译期测试 hook，生产构建没有额外代码。
+- 测试现在确定 waiter 已捕获 snapshot 后才提交 later 任务，不再依赖调度等待。
 
-### P29 安装后缺少完整 CMake package
+### P29 安装后的 CMake package
 
-**状态：Open（打包能力）**
+**状态：Fixed**
 
-- 当前导出 `ThreadPoolTargets.cmake`，但没有 `ThreadPoolConfig.cmake` / ConfigVersion。
-- 需要时增加 `find_dependency(Threads)`、namespace alias 和安装后 consumer 测试。
-- 同时提供 `THREAD_POOL_BUILD_TESTS` / `THREAD_POOL_BUILD_DEMO`，避免子项目污染。
+- 已安装 `ThreadPoolConfig.cmake` / `ThreadPoolConfigVersion.cmake`，并调用
+  `find_dependency(Threads)`。
+- 构建树提供 `mylib::thread_pool` alias；安装后用 `find_package` 的 consumer 已实测。
+- 增加 `THREAD_POOL_BUILD_TESTS` / `THREAD_POOL_BUILD_DEMO`，子项目默认不污染父项目。
 
-### P30 完成位图存在内存增长与 32 位偏移风险
+### P30 完成位图的收益与 32 位偏移风险
 
-**状态：Open（先测后改）**
+**状态：Planned（实现细节，先 benchmark）**
 
-- 队首长期未完成时，后续完成位必须保留；一亿任务约 100 MB。
-- 若改区间压缩或分块位图，必须处理 32 位平台的累计任务数到 `size_t` 截断。
-- 当前 `wait()` 快照语义正确，不是泄漏；改实现前先增加内存压力用例。
+- 位图理论开销是 ID 缺口每项 1 B；但实测任务对象与 future 状态约 186 B/任务，
+  无界队列的内存主责是 P24，不是位图。
+- 有界队列下位图规模受 worker + queue capacity 限制；不要再把位图描述为首要内存风险。
+- 若未来优化，必须处理 32 位平台的累计任务数到 `size_t` 截断，并先 benchmark 收益。
 
 ### P31 cvWait_ 在完成前缀未推进时仍 notify_all
 
-**状态：Open（性能优化）**
+**状态：Planned（性能优化）**
 
 - 长头任务存在时，短尾任务完成会产生无效惊群。
 - 低风险方向：仅在 `nextCompletionId_` 真正推进时通知；`shutdown()` 的通知必须保留。
 - 与 P18/P30 一样，benchmark 后再决定是否实施。
 
-### P32 并发 shutdown 测试无法发现任务丢失
+### P32 并发 shutdown 测试的任务丢失检测
 
-**状态：Open（测试增强）**
+**状态：Fixed**
 
-- 现有测试丢弃所有 future，无法区分任务执行、broken_promise 和彻底丢失。
-- 必须收集 future，使用 `wait_for(2s)` 超时检查，并断言
-  `fulfilled + broken == accepted` 且 `fulfilled == executed`。
+- 新测试收集所有 future，并使用 `wait_for(2s)` 检查每个任务已就绪。
+- 测试断言 `fulfilled + broken == accepted` 且 `fulfilled == executed`。
+- shutdown 在 `accepted`、积压数和活动 worker 达到阈值后才触发，避免空覆盖。
+- 确定性 Discard/broken_promise 仍由 gate 测试覆盖，不依赖并发时序。
 
-### P33 CI 与警告约束仍有缺口
+### P33 CI 与警告约束
 
-**状态：Open（CI 加固）**
+**状态：Fixed（本机验证完成；远端多平台 CI 待本次提交确认）**
 
-- 当前没有 `-Werror`，demo 只编译不运行，也没有 clang / MSVC job。
-- `failures` 非原子，缺少编译期负向测试。
-- CI 可增加 `timeout-minutes`、旧 run 自动取消，并评估固定 `actions/checkout` SHA。
+- 项目警告已启用 `-Werror` 和严格 warning 集合，demo 已加入 ctest。
+- CI 增加 clang、Windows、package consumer job，并设置超时和旧 run 自动取消。
+- `checkout` 已固定 SHA；测试失败计数已改为原子变量。
+- 增加 expression-SFINAE 编译期负向测试，拒绝右值专用或参数不兼容的 callable。
 
 ## 已修复或已有明确约束的风险
 
@@ -162,7 +166,7 @@
 | P7 | 任务内 shutdown/wait/析构 | Guarded | 任务内禁止调用池生命周期 API |
 | P8 | 并发 shutdown 模式 | Fixed | 第一个模式生效，所有调用者等 join |
 | P9 | Discard 后 future | Fixed | 被丢弃任务的 future 报 `broken_promise` |
-| P10 | 构造 worker 失败 | Fixed | 停止、notify、join 已建线程后再抛 |
+| P10 | 构造 worker 失败 | Fixed (code-path) | 停止、notify、join 已建线程后再抛 |
 | P11 | worker 未捕获异常 | Fixed | 任务执行外包最终 `catch (...)` |
 | P12 | wait 与 worker 共用 CV | Fixed | 任务可用和完成等待使用不同 CV |
 | P13 | `deque<bool>` 代理引用 | Fixed | 完成位图使用 `deque<uint8_t>` |
@@ -172,3 +176,6 @@
 | P21 | `std::ref` 生命周期 | Guarded | 引用对象必须活到任务结束 |
 | P22 | future 异常不可观测 | Guarded | 必须调用 `get()` 才能获得异常 |
 | P23 | 文档使用相对轮次 | Fixed | 标题按版本或主题命名 |
+
+P10 的默认验证方式是代码路径审查；创建百万线程的测试只作为受控环境下的可选资源
+压力测试，不进入普通 CI。

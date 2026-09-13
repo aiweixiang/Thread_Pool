@@ -254,6 +254,11 @@ public:
     void wait() {
         std::unique_lock<std::mutex> lock(mutex_);
         const std::uint64_t target = totalSubmitted_;
+#ifdef THREAD_POOL_TEST_ON_WAIT_ENTERED
+        // Test-only hook: invoked after the snapshot is captured and before
+        // waiting. Production builds compile this out.
+        THREAD_POOL_TEST_ON_WAIT_ENTERED();
+#endif
         cvWait_.wait(lock, [this, target] {
             return nextCompletionId_ > target;
         });

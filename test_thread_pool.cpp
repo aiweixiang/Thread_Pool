@@ -1,3 +1,6 @@
+void threadPoolTestOnWaitEntered();
+#define THREAD_POOL_TEST_ON_WAIT_ENTERED threadPoolTestOnWaitEntered
+
 #include "thread_pool.hpp"
 
 #include <atomic>
@@ -13,12 +16,13 @@
 
 namespace {
 
-int failures = 0;
+std::atomic<int> failures{0};
+std::atomic<std::promise<void>*> waitEnteredObserver{nullptr};
 
 void check(bool condition, const char* message) {
     if (!condition) {
         std::cerr << "FAIL: " << message << '\n';
-        ++failures;
+        failures.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -68,6 +72,40 @@ struct LvalueRvalueCallable {
         return 22;
     }
 };
+
+struct RvalueOnlyCallable {
+    int operator()() && {
+        return 1;
+    }
+};
+
+struct RequiresIntCallable {
+    int operator()(int) {
+        return 1;
+    }
+};
+
+struct ValidCallable {
+    int operator()() {
+        return 1;
+    }
+};
+
+template <typename Func, typename = void>
+struct CanSubmitNoArgs : std::false_type {};
+
+template <typename Func>
+struct CanSubmitNoArgs<
+    Func,
+    std::void_t<decltype(std::declval<mylib::ThreadPool&>().submit(
+        std::declval<Func>()))>> : std::true_type {};
+
+static_assert(!CanSubmitNoArgs<RvalueOnlyCallable>::value,
+              "submit must reject callables only invocable as rvalues");
+static_assert(!CanSubmitNoArgs<RequiresIntCallable>::value,
+              "submit must reject callables with incompatible arguments");
+static_assert(CanSubmitNoArgs<ValidCallable>::value,
+              "submit must accept lvalue-invocable callables");
 
 struct LockProbe {
     LockProbe(mylib::ThreadPool* poolPtr, std::atomic<bool>* destroyedPtr)
@@ -363,11 +401,16 @@ void testWaitWaitsOnlyForTasksSubmittedBeforeItStarted() {
     });
     slowStartedFuture.wait();
 
+    std::promise<void> waitEntered;
+    std::future<void> waitEnteredFuture = waitEntered.get_future();
+    waitEnteredObserver.store(&waitEntered, std::memory_order_release);
+
     std::atomic<bool> waitReturned{false};
     std::thread waiter([&pool, &waitReturned] {
         pool.wait();
         waitReturned.store(true, std::memory_order_release);
     });
+    waitEnteredFuture.wait();
 
     auto laterFuture = pool.submit([] {});
     laterFuture.get();
@@ -378,6 +421,7 @@ void testWaitWaitsOnlyForTasksSubmittedBeforeItStarted() {
     releaseSlow.set_value();
     slowFuture.get();
     waiter.join();
+    waitEnteredObserver.store(nullptr, std::memory_order_release);
     check(waitReturned.load(std::memory_order_acquire),
           "wait should return after all tasks submitted before it started finish");
 
@@ -471,6 +515,14 @@ void testConcurrentShutdownAndSubmit() {
 
 }  // namespace
 
+void threadPoolTestOnWaitEntered() {
+    std::promise<void>* observer =
+        waitEnteredObserver.load(std::memory_order_acquire);
+    if (observer != nullptr) {
+        observer->set_value();
+    }
+}
+
 int main() {
     testSubmitReturnVoidAndExceptions();
     testMoveOnlyCallableAndArguments();
@@ -484,8 +536,9 @@ int main() {
     testZeroThreadsAndObservability();
     testConcurrentShutdownAndSubmit();
 
-    if (failures != 0) {
-        std::cerr << failures << " test(s) failed\n";
+    const int failureCount = failures.load(std::memory_order_relaxed);
+    if (failureCount != 0) {
+        std::cerr << failureCount << " test(s) failed\n";
         return 1;
     }
 

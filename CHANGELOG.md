@@ -2,6 +2,18 @@
 
 ## 未发布
 
+### 新增
+- 新增构造异常和并发 shutdown 账目回归测试，覆盖 drain/discard、bounded/unbounded
+  以及 `submit()` / `try_submit()` / `wait()` 组合。
+- 新增 `ThreadPoolConfig.cmake`、ConfigVersion 和安装后 consumer 测试，支持
+  `find_package(ThreadPool)`。
+- 新增 clang、Windows 和 package CI job；test job 启用严格警告和 `-Werror`。
+
+### 变更
+- 测试失败计数改为原子变量，demo 加入 ctest。
+- wait 快照测试使用编译期测试 hook，消除调度时序盲区。
+- P30 修正为完成位图实现细节；内存主责归默认无界队列 P24。
+
 ### 文档
 - 重写 README，增加快速上手、API 速览、背压、关闭语义和文档地图。
 - 将 `docs/ai-pitfalls.md` 合并到 `docs/pitfalls.md`，风险状态改为单一事实源。

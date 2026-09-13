@@ -111,10 +111,12 @@ ctest --test-dir build-tsan --output-on-failure
 
 cmake -S . -B build-asan -DTHREAD_POOL_ENABLE_ASAN=ON -DTHREAD_POOL_ENABLE_UBSAN=ON
 cmake --build build-asan --parallel
-ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-asan --output-on-failure
+ctest --test-dir build-asan --output-on-failure
 ```
 
-CI 会运行普通测试、TSan 和 ASan+UBSan。
+CI 会运行 GCC、Clang、Windows、TSan、ASan+UBSan 和安装后 consumer，并默认启用
+LeakSanitizer。若本地运行环境通过 ptrace 启动进程而无法使用 LeakSanitizer，可临时以
+`ASAN_OPTIONS=detect_leaks=0` 作 workaround，但不要让 CI 关闭泄漏检测。
 
 ## 安装
 
@@ -126,6 +128,13 @@ cmake --install build --prefix /your/prefix
 
 ```cpp
 #include "thread_pool.hpp"
+```
+
+也可以按标准 CMake package 引入：
+
+```cmake
+find_package(ThreadPool CONFIG REQUIRED)
+target_link_libraries(your_target PRIVATE mylib::thread_pool)
 ```
 
 ## 文档地图

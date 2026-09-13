@@ -64,13 +64,17 @@ F5 异常安全
 
 - submit 返回值 / void / 异常透传（std::exception 与 int）；
 - move-only 参数与 move-only 可调用对象；
-- wait() 在 activeCount_ > 0 && tasks_.empty() 时仍阻塞；
+- wait() 在仅有活动任务、队列为空时仍阻塞；
 - 有界队列满 + 阻塞 submit + shutdown(Discard) 交互；
 - try_submit 队列满 / 已关闭返回 nullopt；
-- 并发 shutdown() × N 与 submit() × M 不死锁、不崩溃；
+- 任务构造 copy/move/bad_alloc 异常后池继续可用，完成跟踪不被污染；
+- 并发 shutdown() × N 与 submit()/try_submit()/wait() × M 不死锁、不丢任务；
 - shutdown(Discard) 后被丢弃任务的 future 抛 broken_promise；
 - shutdown 幂等（重复调用、参数不同）；
 - 已关闭池上 submit 抛 runtime_error。
+- demo 通过 ctest 执行；安装后 consumer 能通过 find_package 构建和运行。
+- P10 worker 创建失败：普通 CI 做代码路径审查，资源压力测试作为可选验证，
+  不依赖创建百万线程作为默认测试。
 
 ## 不做
 
