@@ -1,5 +1,14 @@
 # Changelog
 
+## 未发布
+
+### 文档
+- 重写 README，增加快速上手、API 速览、背压、关闭语义和文档地图。
+- 将 `docs/ai-pitfalls.md` 合并到 `docs/pitfalls.md`，风险状态改为单一事实源。
+- 新增根目录 `AGENTS.md`，集中记录修改代码时必须遵守的规则。
+- 精简 `docs/review-checklist.md`，只保留可执行检查项，不再复制风险台账。
+- 将独立复审新增项登记为 P24–P33，覆盖背压、构造异常、并发测试、CMake 和 CI。
+
 ## v0.1.1 - 2026-09-13
 
 ### 变更

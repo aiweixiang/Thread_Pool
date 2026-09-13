@@ -16,6 +16,7 @@ F1 任务提交
 F2 非阻塞提交
 - try_submit(f, args...) -> std::optional<std::future<R>>。
 - 队列满或已关闭时立即返回 nullopt，不阻塞。
+- nullopt 只表示队列满或池已关闭；用户对象构造异常仍向外传播。
 - 失败时的入参语义必须在头文件注释中声明。
 
 F3 有界队列
@@ -45,10 +46,13 @@ F5 异常安全
 - N1 并发正确性：CI 必须运行 TSan；submit / try_submit / shutdown / wait
   可多线程并发调用。
 - N2 可观测性：提供 pendingTasks() / activeTasks() / threadCount()。
-- N3 文档：thread_pool.hpp 顶部含「能力 / 使用禁忌 / 已知语义」三段。
+- N3 文档：thread_pool.hpp 顶部含「能力 / 使用禁忌 / 已知语义」三段；
+  README 面向使用者，内部规则和风险不重复散落在多个状态清单中。
 - N4 兼容性：不破坏 shutdown(bool)；不改 stop_ 切换与 call_once join 语义。
 - N5 使用边界：文档须覆盖同池 future 依赖、持锁构造任务、析构并发前提、
   std::ref 生命周期，以及不调用 future.get() 时异常不可观测。
+- N6 单一事实源：风险状态只在 docs/pitfalls.md 维护；review-checklist.md 只保存
+  可执行检查项，不复制状态表。
 
 ## 验收
 
