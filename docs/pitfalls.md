@@ -146,7 +146,7 @@
 
 ### P33 CI 与警告约束
 
-**状态：Fixed（本机验证完成；远端多平台 CI 待本次提交确认）**
+**状态：Fixed（本机与远端多平台 CI 均已确认）**
 
 - 项目警告已启用 `-Werror` 和严格 warning 集合，demo 已加入 ctest。
 - CI 增加 clang、Windows、package consumer job，并设置超时和旧 run 自动取消。
