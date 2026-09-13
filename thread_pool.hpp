@@ -21,6 +21,8 @@
  *   的调用者的模式生效；所有调用者都在 worker join 完成后才返回。
  * - wait() 只等待调用时刻之前已经成功提交的任务清空且不再执行，不保证之后
  *   不再提交任务；与 shutdown() 并发时，Discard 丢弃的任务也会被计入完成。
+ * - threadCount() 返回构造时创建的 worker 槽位数（threadCount == 0 时按 1）；
+ *   shutdown join 之后数值不变，不表示仍有活线程。
  */
 
 #include <condition_variable>
@@ -153,9 +155,9 @@ public:
         }
 
         const std::uint64_t taskId = totalSubmitted_ + 1;
-        prepareCompletionFlagLocked(taskId);
         NewTask<InvokeResult<Func, Args...>> newTask =
             makeTask(taskId, std::forward<Func>(func), std::forward<Args>(args)...);
+        prepareCompletionFlagLocked(taskId);
         tasks_.push_back(std::move(newTask.task));
         totalSubmitted_ = taskId;
         std::future<InvokeResult<Func, Args...>> future =
@@ -175,9 +177,9 @@ public:
         }
 
         const std::uint64_t taskId = totalSubmitted_ + 1;
-        prepareCompletionFlagLocked(taskId);
         NewTask<InvokeResult<Func, Args...>> newTask =
             makeTask(taskId, std::forward<Func>(func), std::forward<Args>(args)...);
+        prepareCompletionFlagLocked(taskId);
         tasks_.push_back(std::move(newTask.task));
         totalSubmitted_ = taskId;
         std::future<InvokeResult<Func, Args...>> future =
@@ -274,7 +276,7 @@ private:
 
         const auto offset = static_cast<std::size_t>(id - nextCompletionId_);
         if (offset >= completionFlags_.size()) {
-            completionFlags_.resize(offset + 1, false);
+            completionFlags_.resize(offset + 1, 0);
         }
     }
 
@@ -288,8 +290,8 @@ private:
             return;
         }
 
-        completionFlags_[offset] = true;
-        while (!completionFlags_.empty() && completionFlags_.front()) {
+        completionFlags_[offset] = 1;
+        while (!completionFlags_.empty() && completionFlags_.front() != 0) {
             completionFlags_.pop_front();
             ++nextCompletionId_;
         }
@@ -348,7 +350,7 @@ private:
     std::size_t maxQueueSize_ = 0;
     std::uint64_t totalSubmitted_ = 0;
     std::uint64_t nextCompletionId_ = 1;
-    std::deque<bool> completionFlags_;
+    std::deque<std::uint8_t> completionFlags_;
     std::size_t activeTasks_ = 0;
     bool stop_ = false;
 };

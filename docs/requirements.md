@@ -40,7 +40,8 @@ F5 异常安全
 
 ## 非功能需求
 
-- N1 并发正确性：TSan 干净；submit / try_submit / shutdown / wait 可多线程并发调用。
+- N1 并发正确性：CI 必须运行 TSan；submit / try_submit / shutdown / wait
+  可多线程并发调用。
 - N2 可观测性：提供 pendingTasks() / activeTasks() / threadCount()。
 - N3 文档：thread_pool.hpp 顶部含「能力 / 使用禁忌 / 已知语义」三段。
 - N4 兼容性：不破坏 shutdown(bool)；不改 stop_ 切换与 call_once join 语义。
@@ -48,6 +49,8 @@ F5 异常安全
 ## 验收
 
     cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure
+    cmake -S . -B build-tsan -DTHREAD_POOL_ENABLE_TSAN=ON
+    cmake --build build-tsan && ctest --test-dir build-tsan --output-on-failure
 
 必须全绿，且测试至少覆盖：
 

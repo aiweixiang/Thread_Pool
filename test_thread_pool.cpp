@@ -22,6 +22,18 @@ void check(bool condition, const char* message) {
     }
 }
 
+bool waitUntil(const std::atomic<bool>& flag, bool expected,
+               std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (flag.load(std::memory_order_acquire) != expected) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+            return false;
+        }
+        std::this_thread::yield();
+    }
+    return true;
+}
+
 struct Multiplier {
     int multiply(int value) const {
         return value * 7;
@@ -171,8 +183,8 @@ void testWaitWaitsWhileActiveWhenQueueIsEmpty() {
     });
     waiterStartedFuture.wait();
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    check(!waitReturned.load(), "wait must block while activeTasks() > 0");
+    check(!waitUntil(waitReturned, true, std::chrono::milliseconds(50)),
+          "wait must block while activeTasks() > 0");
 
     release.set_value();
     activeFuture.get();
@@ -226,8 +238,8 @@ void testBoundedSubmitDiscardAndBrokenPromise() {
         });
     blockedSubmitStartedFuture.wait();
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    check(!blockedSubmitReturned.load(),
+    check(!waitUntil(blockedSubmitReturned, true,
+                     std::chrono::milliseconds(50)),
           "submit should block when the bounded queue is full");
 
     std::thread stopper([&pool] {
@@ -351,23 +363,16 @@ void testWaitWaitsOnlyForTasksSubmittedBeforeItStarted() {
     });
     slowStartedFuture.wait();
 
-    std::atomic<bool> waiterStarted{false};
     std::atomic<bool> waitReturned{false};
-    std::thread waiter([&pool, &waiterStarted, &waitReturned] {
-        waiterStarted.store(true, std::memory_order_release);
+    std::thread waiter([&pool, &waitReturned] {
         pool.wait();
         waitReturned.store(true, std::memory_order_release);
     });
-    while (!waiterStarted.load(std::memory_order_acquire)) {
-        std::this_thread::yield();
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     auto laterFuture = pool.submit([] {});
     laterFuture.get();
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-    check(!waitReturned.load(std::memory_order_acquire),
+    check(!waitUntil(waitReturned, true, std::chrono::milliseconds(50)),
           "wait must not be satisfied by tasks submitted after it started");
 
     releaseSlow.set_value();

@@ -109,7 +109,8 @@ join 用 std::call_once，所有调用者等到 join 完成才返回。
 vector<thread> 析构时若有 joinable 线程未 join → terminate。
 规则：置 stop_ → notify → join 已建线程 → 重新抛出。
 
-状态：已修复，回归测试须保留。
+状态：已修复，回归测试须保留。无法在不侵入 API 的情况下模拟
+`std::thread` 构造失败，回归依赖代码路径审查。
 
 ---
 
@@ -133,3 +134,29 @@ try/catch(...) 兜底。
 通知必须发送到对应条件变量。
 
 状态：已修复。
+
+---
+
+## P13 `deque<bool>` 代理引用
+
+现象：`operator[]` 返回代理引用而不是 `bool&`，后续改位图或取地址容易
+踩坑。
+
+根因：`std::deque<bool>` 是为节省空间实现的特化容器。
+
+规则：完成位图使用 `std::deque<std::uint8_t>`，只写入 0/1。
+
+状态：本轮修复。
+
+---
+
+## P14 先 prepare 再 makeTask
+
+现象：任务构造失败时会留下永远为 false 的空洞完成位，前缀推进存在卡住
+隐患。
+
+根因：完成位登记早于任务构造成功。
+
+规则：先 `makeTask` 成功，再 `prepareCompletionFlagLocked`，再入队。
+
+状态：本轮修复。

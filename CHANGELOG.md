@@ -1,5 +1,15 @@
 # Changelog
 
+## 未发布
+
+### 变更
+- 完成位图改为 `deque<uint8_t>`。
+- `submit` 先构造任务，再登记完成位并入队。
+- CI 增加 pull_request 触发、TSan 和 ASan/UBSan。
+- CMake 增加 install / export。
+- 测试去掉固定 sleep 同步。
+- 头文件补充 `threadCount()` 语义。
+
 ## v0.1.0 - 2026-09-13
 
 ### 新增

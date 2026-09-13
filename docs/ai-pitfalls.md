@@ -15,6 +15,8 @@
 - R5 submit / try_submit 加 [[nodiscard]]。
 - R6 worker 任务可用和 wait() 完成等待使用独立 condition variable，
   避免 notify_one() 唤醒错误等待者。
+- R7 完成位图禁用 `deque<bool>`，使用 `deque<uint8_t>`。
+- R8 先 `makeTask` 成功，再 `prepareCompletionFlagLocked`，再入队。
 
 ## 历史雷（不要退化）
 

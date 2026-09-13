@@ -48,6 +48,13 @@ Sanitizer：
     cmake -S . -B build-tsan -DTHREAD_POOL_ENABLE_TSAN=ON
     cmake --build build-tsan && ctest --test-dir build-tsan
 
+安装：
+
+    cmake --install build --prefix <prefix>
+
+安装后 `thread_pool.hpp` 位于 include 根目录，可继续直接使用
+`#include "thread_pool.hpp"`。CI 会运行普通测试、TSan、ASan 和 UBSan。
+
 ## License
 
 本项目采用 [MIT License](LICENSE)。

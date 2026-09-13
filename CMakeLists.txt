@@ -2,13 +2,16 @@ cmake_minimum_required(VERSION 3.14)
 
 project(ThreadPool LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 find_package(Threads REQUIRED)
 
 add_library(thread_pool INTERFACE)
 target_include_directories(
     thread_pool
     INTERFACE
-        "${CMAKE_CURRENT_SOURCE_DIR}")
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_compile_features(thread_pool INTERFACE cxx_std_17)
 target_link_libraries(thread_pool INTERFACE Threads::Threads)
 
@@ -56,5 +59,18 @@ if(BUILD_TESTING)
     thread_pool_enable_sanitizer(thread_pool_tests)
 
     add_test(NAME thread_pool_tests COMMAND thread_pool_tests)
-    set_tests_properties(thread_pool_tests PROPERTIES TIMEOUT 30)
+
+    set(THREAD_POOL_TEST_TIMEOUT 30)
+    if(THREAD_POOL_ENABLE_TSAN OR THREAD_POOL_ENABLE_ASAN OR THREAD_POOL_ENABLE_UBSAN)
+        set(THREAD_POOL_TEST_TIMEOUT 120)
+    endif()
+    set_tests_properties(thread_pool_tests PROPERTIES TIMEOUT ${THREAD_POOL_TEST_TIMEOUT})
 endif()
+
+install(FILES thread_pool.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(TARGETS thread_pool EXPORT ThreadPoolTargets)
+install(
+    EXPORT ThreadPoolTargets
+    FILE ThreadPoolTargets.cmake
+    NAMESPACE mylib::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ThreadPool)
