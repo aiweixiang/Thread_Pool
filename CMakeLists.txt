@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(ThreadPool VERSION 0.1.1 LANGUAGES CXX)
+project(ThreadPool VERSION 0.1.2 LANGUAGES CXX)
 
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)

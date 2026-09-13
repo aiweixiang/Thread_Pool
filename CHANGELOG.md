@@ -1,6 +1,6 @@
 # Changelog
 
-## 未发布
+## v0.1.2 - 2026-09-13
 
 ### 新增
 - 新增构造异常和并发 shutdown 账目回归测试，覆盖 drain/discard、bounded/unbounded

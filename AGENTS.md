@@ -1,6 +1,6 @@
 # Repository Rules
 
-适用版本：`v0.1.1` 及之后。修改代码前先读本文件，再读 `docs/pitfalls.md`。
+适用版本：`v0.1.2` 及之后。修改代码前先读本文件，再读 `docs/pitfalls.md`。
 
 ## 不可破坏的行为
 
